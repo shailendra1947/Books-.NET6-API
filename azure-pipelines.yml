@@ -1,24 +1,42 @@
 trigger:
   - master
+
 pool:
-  vmImage: ubuntu-latest
+  vmImage: 'windows-latest'
+
 variables:
-  buildConfiguration: Release
+  BuildConfiguration: 'Release'
+
 steps:
-  - task: DotNetCoreCLI@2
-    inputs:
-      command: test
-      projects: '**/*Test/*.csproj'
-      arguments: '--configuration $(buildConfiguration)'
-  - script: dotnet build --configuration $(buildConfiguration)
-    displayName: dotnet build $(buildConfiguration)
-  - task: DotNetCoreCLI@2
-    displayName: 'dotnet publish --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)'
-    inputs:
-      command: publish
-      publishWebProjects: false
-      projects: 'BooksNET6API/BooksNET6API.csproj'
-      arguments: '--configuration $(BuildConfiguration) --output $(Build.ArtifactStagingDirectory)'
-      zipAfterPublish: true
-  - task: PublishBuildArtifacts@1
-    displayName: 'publish artifacts'
+- task: UseDotNet@2
+  displayName: 'Install .NET SDK'
+  inputs:
+    packageType: 'sdk'
+    version: '6.0.x'
+
+- script: dotnet restore --verbosity minimal
+  displayName: 'Restore NuGet packages'
+
+- script: dotnet build --configuration $(BuildConfiguration) --no-restore --verbosity minimal
+  displayName: 'Build projects'
+
+- script: |
+    dotnet test --configuration $(BuildConfiguration) --no-build --logger "trx;LogFileName=test_results.trx" --results-directory $(Agent.TempDirectory)/test-results
+  displayName: 'Run unit tests'
+
+- task: PublishTestResults@2
+  displayName: 'Publish test results'
+  inputs:
+    testResultsFiles: '$(Agent.TempDirectory)/test-results/*.trx'
+    testRunTitle: 'dotnet test results'
+    mergeTestResults: true
+
+- script: dotnet publish BooksNET6API/BooksNET6API.csproj -c $(BuildConfiguration) -o $(Build.ArtifactStagingDirectory)/publish
+  displayName: 'Publish web project'
+
+- task: PublishBuildArtifacts@1
+  displayName: 'Publish artifact: drop'
+  inputs:
+    pathToPublish: '$(Build.ArtifactStagingDirectory)/publish'
+    artifactName: 'drop'
+    publishLocation: 'Container'
